@@ -9,11 +9,11 @@ spec:
     - name: URL
       type: string
       description: URL of the Git repository use for fetching the tasks
-      default: 'https://github.com/RedHatInsights/bonfire-tekton'
+      default: 'https://github.com/RH-HostInventory/bonfire-tekton'
     - name: REVISION
       type: string
       description: Git commit revision to use for fetching the tasks
-      default: main
+      default: local_plugin
     - name: BONFIRE_IMAGE
       type: string
       description: The container Bonfire image to use for the tekton tasks
@@ -160,6 +160,14 @@ spec:
       type: string
       description: "Tag of the iqe image to run tests from"
       default: ""
+    - name: USE_LOCAL_PLUGIN
+      type: string
+      description: "Set to 'true' to install IQE plugin from the component's source repository"
+      default: "false"
+    - name: LOCAL_PLUGIN_FOLDER
+      type: string
+      description: "Folder within the component repository containing the IQE plugin (e.g., 'iqe-host-inventory-plugin')"
+      default: ""
   results:
     - name: ARTIFACTS_URL
       description: URL for the test's artifacts
@@ -255,6 +263,12 @@ spec:
       params:
         - name: BONFIRE_IMAGE
           value: "$(params.BONFIRE_IMAGE)"
+        - name: SNAPSHOT
+          value: "$(params.SNAPSHOT)"
+        - name: SINGLE_COMPONENT
+          value: "$(params.SINGLE_COMPONENT)"
+        - name: SINGLE_COMPONENT_CUSTOM_RESOURCE
+          value: "$(params.SINGLE_COMPONENT_CUSTOM_RESOURCE)"
         - name: NS
           value: "$(tasks.reserve-namespace.results.NS)"
         - name: NS_REQUESTER
@@ -301,6 +315,10 @@ spec:
           value: "$(params.IBUTSU_MODE)"
         - name: IQE_IMAGE_TAG
           value: "$(params.IQE_IMAGE_TAG)"
+        - name: USE_LOCAL_PLUGIN
+          value: "$(params.USE_LOCAL_PLUGIN)"
+        - name: LOCAL_PLUGIN_FOLDER
+          value: "$(params.LOCAL_PLUGIN_FOLDER)"
       runAfter:
         - deploy-application
       taskRef:
