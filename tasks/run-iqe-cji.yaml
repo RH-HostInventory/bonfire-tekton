@@ -20,6 +20,10 @@ spec:
     - name: COMPONENT_NAME
       type: string
       description: name of app-sre "resourceTemplate" in deploy.yaml for this component
+    - name: SNAPSHOT
+      type: string
+      description: "AppStudio snapshot providing the Git source for USE_LOCAL_PLUGIN"
+      default: ""
     - name: BONFIRE_COMPONENT_NAME
       type: string
       description: name of the app-sre component name (deprecated, use BONFIRE_COMPONENTS_MAPPING)
@@ -99,7 +103,50 @@ spec:
       type: string
       description: "Tag of the IQE image to be used"
       default: ""
+    - name: USE_LOCAL_PLUGIN
+      type: string
+      description: "Set to 'true' to install IQE plugin from the component's source repository"
+      default: "false"
+    - name: LOCAL_PLUGIN_FOLDER
+      type: string
+      description: "Folder within the component repository containing the IQE plugin (e.g., 'iqe-plugin')"
+      default: ""
   steps:
+    - name: clone-repository
+      image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+      workingDir: /workspace
+      env:
+        - name: SNAPSHOT
+          value: $(params.SNAPSHOT)
+        - name: COMPONENT_NAME
+          value: $(params.COMPONENT_NAME)
+        - name: USE_LOCAL_PLUGIN
+          value: $(params.USE_LOCAL_PLUGIN)
+      script: |
+        #!/bin/bash
+        set -euo pipefail
+
+        if [[ "$USE_LOCAL_PLUGIN" != "true" ]]; then
+          exit 0
+        fi
+
+        microdnf install -y git jq
+
+        source_git=$(jq -ce --arg name "$COMPONENT_NAME" '
+          [.components[] | select(.name == $name)] |
+          if length == 1 then .[0].source.git
+          else error("Expected exactly one snapshot component named \($name)")
+          end |
+          if (.url | type == "string" and length > 0) and
+             (.revision | type == "string" and length > 0) then .
+          else error("Missing Git URL or revision for snapshot component \($name)")
+          end
+        ' <<< "$SNAPSHOT")
+        git_url=$(jq -r '.url' <<< "$source_git")
+        git_revision=$(jq -r '.revision' <<< "$source_git")
+        echo "Cloning IQE source for $COMPONENT_NAME and checking out $git_revision"
+        git clone -- "$git_url" source
+        git -C source checkout --detach "$git_revision"
     - name: deploy-iqe-cji
       image: "$(params.BONFIRE_IMAGE)"
       env:
@@ -157,6 +204,10 @@ spec:
           value: "true"
         - name: IQE_IMAGE_TAG
           value: $(params.IQE_IMAGE_TAG)
+        - name: USE_LOCAL_PLUGIN
+          value: $(params.USE_LOCAL_PLUGIN)
+        - name: LOCAL_PLUGIN_FOLDER
+          value: $(params.LOCAL_PLUGIN_FOLDER)
       script: |
         #!/bin/bash
         set -ex
@@ -164,5 +215,33 @@ spec:
         echo "Connecting to the ephemeral namespace cluster"
         login.sh
 
-        echo "Deploying the IQE CJI test"
-        deploy-iqe-cji.sh "$(params.NS)" "$(params.NS_REQUESTER)"
+        if [[ "$USE_LOCAL_PLUGIN" != "true" ]]; then
+          echo "Deploying the IQE CJI test"
+          exec deploy-iqe-cji.sh "$(params.NS)" "$(params.NS_REQUESTER)"
+        fi
+
+        plugin_source="/workspace/source/$LOCAL_PLUGIN_FOLDER"
+        if [[ -z "$LOCAL_PLUGIN_FOLDER" || ! -f "$plugin_source/pyproject.toml" ]]; then
+          echo "LOCAL_PLUGIN_FOLDER must point to an IQE project in the checked-out source" >&2
+          exit 1
+        fi
+
+        cji_args=()
+        IFS=',' read -ra env_pairs <<< "$IQE_ENV_VARS"
+        for pair in "${env_pairs[@]}"; do
+          if [[ -n "$pair" ]]; then cji_args+=(--env-var "$pair"); fi
+        done
+
+        pod=$(bonfire deploy-iqe-cji "$BONFIRE_COMPONENT_NAME" \
+          --namespace "$(params.NS)" --requester "$(params.NS_REQUESTER)" \
+          --env "$IQE_ENV" --plugins "$IQE_PLUGINS" --image-tag "$IQE_IMAGE_TAG" \
+          --marker "$IQE_MARKER_EXPRESSION" --filter "$IQE_FILTER_EXPRESSION" \
+          "${cji_args[@]}" --debug-pod)
+        : "${pod:?Bonfire did not return an IQE pod name}"
+
+        oc cp -n "$(params.NS)" "$plugin_source" "$pod:iqe-local-plugin"
+        oc exec -n "$(params.NS)" "$pod" -- uv pip install -e iqe-local-plugin/ --default-index https://pypi.org/simple
+
+        # HBI shards tests in Konflux, so keep each IQE run sequential.
+        exec timeout "${IQE_CJI_TIMEOUT:-30m}" \
+          oc exec -n "$(params.NS)" "$pod" -- env IQE_PARALLEL_ENABLED=false iqe_container_entrypoint run
