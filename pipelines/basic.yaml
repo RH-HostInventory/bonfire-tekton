@@ -17,7 +17,7 @@ spec:
     - name: BONFIRE_IMAGE
       type: string
       description: The container Bonfire image to use for the tekton tasks
-      default: quay.io/redhat-services-prod/hcm-eng-prod-tenant/cicd-tools:6912ea6
+      default: quay.io/redhat-services-prod/hcm-eng-prod-tenant/cicd-tools:4a25c43
     - name: SNAPSHOT
       type: string
       description: |
@@ -160,6 +160,10 @@ spec:
       type: string
       description: "Tag of the iqe image to run tests from"
       default: ""
+    - name: REF_ENV
+      type: string
+      description: "Reference environment for dependencies (insights-stage or insights-production)"
+      default: "insights-production"
     - name: USE_LOCAL_PLUGIN
       type: string
       description: "Set to 'true' to install IQE plugin from the component's source repository"
@@ -248,6 +252,8 @@ spec:
           value: "$(params.DEPLOY_TIMEOUT)"
         - name: OPTIONAL_DEPS_METHOD
           value: "$(params.DEPLOY_OPTIONAL_DEPS_METHOD)"
+        - name: REF_ENV
+          value: "$(params.REF_ENV)"
       runAfter:
         - reserve-namespace
       taskRef:
