@@ -136,8 +136,9 @@ spec:
         - name: HOME
           value: "$(params.HOMEDIR)"
       image: quay.io/enterprise-contract/ec-cli:snapshot
-      onError: continue # progress even if the step fails so we can see the debug logs
-      command: [reduce-snapshot.sh]
+      script: |
+        #!/bin/bash
+        reduce-snapshot.sh || echo "WARNING: reduce-snapshot.sh failed, continuing..."
     - name: clone-repository
       image: registry.access.redhat.com/ubi9/ubi-minimal:latest
       workingDir: /workspace
