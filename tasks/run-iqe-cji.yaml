@@ -317,11 +317,6 @@ spec:
             sleep 5
           }
 
-          echo "Installing setuptools_scm..."
-          oc exec -n $(params.NS) $POD -- pip install -i https://pypi.python.org/simple setuptools_scm || {
-            echo "WARNING: Failed to install setuptools_scm, continuing anyway..."
-          }
-
           echo "Copying local IQE plugin to pod..."
           echo "Source: $PLUGIN_SOURCE_PATH"
 
@@ -333,7 +328,7 @@ spec:
           oc exec -n $(params.NS) $POD -- bash -c "cd iqe-local-plugin && git init && git config user.email 'ci@redhat.com' && git config user.name 'CI' && git add -A && git commit -m 'local' && git tag v999.0.0"
 
           echo "Installing local IQE plugin in the pod..."
-          oc exec -n $(params.NS) $POD -- bash -c "cd iqe-local-plugin && pip install -i https://pypi.python.org/simple -e ."
+          oc exec -n "$(params.NS)" "$POD" -- uv pip install -e iqe-local-plugin/ --default-index https://pypi.org/simple
 
           echo "Verifying plugin installation..."
           oc exec -n $(params.NS) $POD -- iqe plugin list | grep -i "$IQE_PLUGINS" || {
