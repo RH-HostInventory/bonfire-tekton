@@ -275,10 +275,6 @@ spec:
           value: "$(params.BONFIRE_IMAGE)"
         - name: SNAPSHOT
           value: "$(params.SNAPSHOT)"
-        - name: SINGLE_COMPONENT
-          value: "$(params.SINGLE_COMPONENT)"
-        - name: SINGLE_COMPONENT_CUSTOM_RESOURCE
-          value: "$(params.SINGLE_COMPONENT_CUSTOM_RESOURCE)"
         - name: NS
           value: "$(tasks.reserve-namespace.results.NS)"
         - name: NS_REQUESTER
